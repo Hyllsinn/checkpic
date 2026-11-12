@@ -1,0 +1,34 @@
+name: Validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Aucune clé secrète dans le site
+        run: |
+          # Une vraie clé secrète (pas le simple préfixe cité par la bibliothèque Supabase).
+          if grep -rqE "sb_secret_[A-Za-z0-9_-]{8,}" dist; then
+            echo "Clé secrète trouvée dans le site"; exit 1; fi
+          for t in $(grep -rhoE "eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+" dist | sort -u); do
+            p=$(echo "$t" | cut -d. -f2 | tr '_-' '/+'); while [ $(( ${#p} % 4 )) -ne 0 ]; do p="$p="; done
+            if echo "$p" | base64 -d 2>/dev/null | grep -q '"service_role"'; then
+              echo "Jeton service_role trouvé dans le site"; exit 1; fi
+          done
